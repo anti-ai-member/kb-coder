@@ -29,6 +29,12 @@ def guess_language(path: Path) -> str:
         ".py": "python",
         ".cpp": "cpp",
         ".cc": "cpp",
+        ".cxx": "cpp",
+        ".c++": "cpp",
+        ".hpp": "cpp_header",
+        ".hh": "cpp_header",
+        ".hxx": "cpp_header",
+        ".h++": "cpp_header",
         ".c": "c",
         ".h": "c_header",
         ".sh": "shell",
@@ -51,7 +57,10 @@ def guess_file_type(path: Path) -> str:
         return "aidl"
     if path.suffix.lower() == ".xml":
         return "resource_xml"
-    if path.suffix.lower() in {".java", ".kt", ".cpp", ".c", ".h", ".py"}:
+    if path.suffix.lower() in {
+        ".java", ".kt", ".cpp", ".cc", ".cxx", ".c++",
+        ".hpp", ".hh", ".hxx", ".h++", ".c", ".h", ".py"
+    }:
         return "source"
     if path.suffix.lower() in {".sh"}:
         return "script"
@@ -88,6 +97,22 @@ def extract_symbols(text: str, language: str) -> list[str]:
     elif language == "python":
         symbols.extend(re.findall(r"\bclass\s+([A-Za-z_][A-Za-z0-9_]*)", text))
         symbols.extend(re.findall(r"\bdef\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", text))
+    elif language in {"cpp", "cpp_header", "c", "c_header"}:
+        symbols.extend(
+            re.findall(
+                r"\b(?:class|struct|union|enum)\s+(?:class\s+)?([A-Za-z_][A-Za-z0-9_]*)",
+                text,
+            )
+        )
+        symbols.extend(re.findall(r"\benum\s+class\s+([A-Za-z_][A-Za-z0-9_]*)", text))
+        symbols.extend(re.findall(r"\bnamespace\s+([A-Za-z_][A-Za-z0-9_]*)", text))
+        symbols.extend(
+            re.findall(
+                r"\b(?:inline\s+)?(?:static\s+)?(?:const\s+)?(?:[\w:<>\[\],\s\*&]+)\s+"
+                r"([A-Za-z_~][A-Za-z0-9_]*)\s*\(",
+                text,
+            )
+        )
 
     # 去重保序
     seen = set()
@@ -105,6 +130,10 @@ def extract_imports(text: str, language: str) -> list[str]:
     elif language == "python":
         imports.extend(re.findall(r"^\s*import\s+([^\s]+)", text, flags=re.MULTILINE))
         imports.extend(re.findall(r"^\s*from\s+([^\s]+)\s+import", text, flags=re.MULTILINE))
+    elif language in {"cpp", "cpp_header", "c", "c_header"}:
+        imports.extend(
+            re.findall(r'^\s*#include\s+["<]([^">]+)[">]', text, flags=re.MULTILINE)
+        )
     return imports[:50]
 
 def build_summary(path: Path, symbols: list[str], imports: list[str], file_type: str) -> str:

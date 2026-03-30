@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-按顺序执行 build_files -> build_symbols -> build_relations，生成三个 jsonl。
+按顺序执行 build_files -> build_symbols -> build_relations -> build_log_index。
 
 用法:
   python build_pipeline.py <代码目录>
 
 输出（在 <代码目录>/.code_kb/ 下）:
-  files.jsonl, symbols.jsonl, relations.jsonl
+  files.jsonl, symbols.jsonl, relations.jsonl,
+  log_index.jsonl, log_index_stats.json
 """
 from __future__ import annotations
 
@@ -33,6 +34,8 @@ def main() -> None:
     files_jsonl = out_dir / "files.jsonl"
     symbols_jsonl = out_dir / "symbols.jsonl"
     relations_jsonl = out_dir / "relations.jsonl"
+    log_index_jsonl = out_dir / "log_index.jsonl"
+    log_index_stats_json = out_dir / "log_index_stats.json"
 
     py = sys.executable
     steps: list[tuple[str, ...]] = [
@@ -46,6 +49,13 @@ def main() -> None:
             str(repo),
             str(relations_jsonl),
         ),
+        (
+            py,
+            str(script_dir / "build_log_index.py"),
+            str(repo),
+            str(log_index_jsonl),
+            str(log_index_stats_json),
+        ),
     ]
 
     for cmd in steps:
@@ -58,6 +68,8 @@ def main() -> None:
     print(f"  {files_jsonl}")
     print(f"  {symbols_jsonl}")
     print(f"  {relations_jsonl}")
+    print(f"  {log_index_jsonl}")
+    print(f"  {log_index_stats_json}")
 
 
 if __name__ == "__main__":

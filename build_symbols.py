@@ -60,6 +60,45 @@ CONTROL_KEYWORDS = {
     "if", "for", "while", "switch", "catch", "return", "new", "throw", "else", "when"
 }
 
+# C/C++: token before `(` that is not a function definition name
+CPP_NON_FUNC_NAMES = CONTROL_KEYWORDS | {
+    "while", "sizeof", "alignof", "decltype", "static_assert", "using", "typedef",
+    "case", "try", "delete", "const_cast", "dynamic_cast", "reinterpret_cast",
+    "static_cast", "typeid", "namespace", "class", "struct", "enum", "union",
+    "template", "concept", "requires", "typename", "public", "private", "protected",
+    "friend", "operator", "this", "nullptr", "true", "false", "static", "extern",
+    "register", "volatile", "mutable", "inline", "constexpr", "consteval", "virtual",
+    "override", "final", "explicit", "noexcept", "const", "goto", "asm", "typeof",
+    "if", "switch", "synchronized",
+}
+
+CPP_METHOD_PAT = re.compile(
+    r"^\s*"
+    r"(?:template\s*<[^>{}]*>\s*)?"
+    r"(?:virtual\s+|static\s+|inline\s+|constexpr\s+|consteval\s+|explicit\s+|friend\s+)*"
+    r"(?:const\s+|volatile\s+)?(?:unsigned\s+|signed\s+)?"
+    r"(?:[\w:<>\[\],\s\*&]+?)\s+"
+    r"([A-Za-z_~][A-Za-z0-9_]*)\s*"
+    r"\("
+)
+
+CPP_CTOR_PAT = re.compile(
+    r"^\s*(?:explicit\s+)?(?:inline\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*\)\s*(?::[^;{]*)?\{"
+)
+
+NAMESPACE_PAT = re.compile(
+    r"^\s*inline\s+namespace\s+([A-Za-z_][A-Za-z0-9_]*)\b|"
+    r"^\s*namespace\s+([A-Za-z_][A-Za-z0-9_]*)\b"
+)
+
+CPP_TYPE_DECL_PAT = re.compile(
+    r"\b(class|struct|union)\s+([A-Za-z_][A-Za-z0-9_]*)\b"
+)
+
+ENUM_CLASS_PAT = re.compile(r"\benum\s+class\s+([A-Za-z_][A-Za-z0-9_]*)\b")
+
+ENUM_PAT = re.compile(r"\benum\s+(?!class\b)([A-Za-z_][A-Za-z0-9_]*)\b")
+
 
 def load_jsonl(path: Path) -> List[Dict]:
     items = []
@@ -108,6 +147,29 @@ def looks_like_comment(line: str) -> bool:
     )
 
 
+def strip_cpp_line_comments(raw_line: str, in_block_comment: bool) -> tuple[str, bool]:
+    """
+    Remove // and /* */ (incl. same-line) from a physical line; track unfinished block comments.
+    """
+    s = raw_line
+    if in_block_comment:
+        if "*/" in s:
+            s = s.split("*/", 1)[1]
+            in_block_comment = False
+        else:
+            return "", True
+    while "/*" in s:
+        pre, _, rest = s.partition("/*")
+        if "*/" in rest:
+            s = pre + rest.split("*/", 1)[1]
+        else:
+            s = pre
+            in_block_comment = True
+            break
+    s = re.sub(r"//.*", "", s)
+    return s, in_block_comment
+
+
 def looks_like_control_statement(line: str) -> bool:
     s = line.strip()
     for kw in CONTROL_KEYWORDS:
@@ -122,7 +184,7 @@ def infer_tags(name: str, kind: str, signature: str, file_path: str) -> List[str
     low_sig = signature.lower()
     low_path = file_path.lower()
 
-    if kind in {"class", "object", "interface"}:
+    if kind in {"class", "object", "interface", "struct", "union"}:
         if "service" in low_name:
             tags.add("service")
         if "manager" in low_name:
@@ -355,6 +417,204 @@ def extract_java_kotlin_symbols(file_item: Dict, repo_root: Path) -> List[Dict]:
     return dedupe_symbols(results)
 
 
+def extract_cpp_c_symbols(file_item: Dict, repo_root: Path) -> List[Dict]:
+    file_path = repo_root / file_item["path"]
+    text = safe_read_text(file_path)
+    if not text:
+        return []
+
+    language = file_item["language"]
+    lines = text.splitlines()
+    results: List[Dict] = []
+
+    namespace_stack: List[Dict] = []
+    class_stack: List[Dict] = []
+    brace_depth = 0
+    in_block_comment = False
+
+    def scope_prefix() -> str:
+        parts = [x["name"] for x in namespace_stack] + [x["name"] for x in class_stack]
+        return ".".join(parts) if parts else ""
+
+    def make_qn(symbol: str) -> str:
+        return symbol
+
+    def container_for_type_decl() -> Optional[str]:
+        if class_stack:
+            return class_stack[-1]["symbol"]
+        if namespace_stack:
+            return ".".join(x["name"] for x in namespace_stack)
+        return None
+
+    for idx, raw_line in enumerate(lines, start=1):
+        line_body, in_block_comment = strip_cpp_line_comments(raw_line, in_block_comment)
+        line = line_body.strip()
+
+        if not line:
+            brace_depth += raw_line.count("{")
+            brace_depth -= raw_line.count("}")
+            while namespace_stack and brace_depth < namespace_stack[-1]["brace_depth"]:
+                namespace_stack.pop()
+            while class_stack and brace_depth < class_stack[-1]["brace_depth"]:
+                class_stack.pop()
+            continue
+
+        if line.startswith("#"):
+            brace_depth += raw_line.count("{")
+            brace_depth -= raw_line.count("}")
+            while namespace_stack and brace_depth < namespace_stack[-1]["brace_depth"]:
+                namespace_stack.pop()
+            while class_stack and brace_depth < class_stack[-1]["brace_depth"]:
+                class_stack.pop()
+            continue
+
+        def push_type_scope(symbol: str, name: str) -> None:
+            open_count = raw_line.count("{")
+            close_count = raw_line.count("}")
+            predicted = brace_depth + open_count - close_count
+            stack_depth = predicted if open_count > 0 else brace_depth + 1
+            class_stack.append({"name": name, "symbol": symbol, "brace_depth": stack_depth})
+
+        # namespace (named only, opening brace on same physical line)
+        nm = NAMESPACE_PAT.search(line)
+        if nm:
+            name = nm.group(1) or nm.group(2)
+            if name and "{" in raw_line:
+                open_count = raw_line.count("{")
+                close_count = raw_line.count("}")
+                predicted = brace_depth + open_count - close_count
+                depth_after = predicted if open_count > 0 else brace_depth + 1
+                prefix = scope_prefix()
+                symbol = f"{prefix}.{name}" if prefix else name
+                visibility = guess_visibility(line, language)
+                tags = infer_tags(name, "namespace", line, file_item["path"])
+                results.append(build_symbol_record(
+                    symbol=symbol,
+                    kind="namespace",
+                    name=name,
+                    qualified_name=make_qn(symbol),
+                    file_item=file_item,
+                    line=idx,
+                    end_line=None,
+                    signature=line,
+                    container=prefix or None,
+                    visibility=visibility,
+                    tags=tags
+                ))
+                namespace_stack.append({"name": name, "brace_depth": depth_after})
+
+        elif (em := ENUM_CLASS_PAT.search(line)):
+            name = em.group(1)
+            container_sym = container_for_type_decl()
+            symbol = f"{container_sym}.{name}" if container_sym else name
+            visibility = guess_visibility(line, language)
+            tags = infer_tags(name, "enum", line, file_item["path"])
+            results.append(build_symbol_record(
+                symbol=symbol,
+                kind="enum",
+                name=name,
+                qualified_name=make_qn(symbol),
+                file_item=file_item,
+                line=idx,
+                end_line=None,
+                signature=line,
+                container=container_sym,
+                visibility=visibility,
+                tags=tags
+            ))
+            push_type_scope(symbol, name)
+
+        elif (em2 := ENUM_PAT.search(line)):
+            name = em2.group(1)
+            container_sym = container_for_type_decl()
+            symbol = f"{container_sym}.{name}" if container_sym else name
+            visibility = guess_visibility(line, language)
+            tags = infer_tags(name, "enum", line, file_item["path"])
+            results.append(build_symbol_record(
+                symbol=symbol,
+                kind="enum",
+                name=name,
+                qualified_name=make_qn(symbol),
+                file_item=file_item,
+                line=idx,
+                end_line=None,
+                signature=line,
+                container=container_sym,
+                visibility=visibility,
+                tags=tags
+            ))
+            push_type_scope(symbol, name)
+
+        elif "enum class" not in line and (td := CPP_TYPE_DECL_PAT.search(line)):
+            kind = td.group(1)
+            name = td.group(2)
+            container_sym = container_for_type_decl()
+            symbol = f"{container_sym}.{name}" if container_sym else name
+            visibility = guess_visibility(line, language)
+            tags = infer_tags(name, kind, line, file_item["path"])
+            results.append(build_symbol_record(
+                symbol=symbol,
+                kind=kind,
+                name=name,
+                qualified_name=make_qn(symbol),
+                file_item=file_item,
+                line=idx,
+                end_line=None,
+                signature=line,
+                container=container_sym,
+                visibility=visibility,
+                tags=tags
+            ))
+            push_type_scope(symbol, name)
+
+        # functions / methods
+        method_name = None
+        cm = CPP_CTOR_PAT.search(line)
+        if cm and language in {"cpp", "cpp_header", "c_header"}:
+            ctor_name = cm.group(1)
+            if ctor_name not in CPP_NON_FUNC_NAMES:
+                method_name = ctor_name
+        if method_name is None:
+            mm = CPP_METHOD_PAT.search(line)
+            if mm and not looks_like_control_statement(line):
+                cand = mm.group(1)
+                if cand not in CPP_NON_FUNC_NAMES and not cand.startswith("operator"):
+                    method_name = cand
+
+        if method_name:
+            if class_stack:
+                container = class_stack[-1]["symbol"]
+                symbol = f"{container}.{method_name}"
+            else:
+                container = None
+                symbol = method_name
+            visibility = guess_visibility(line, language)
+            tags = infer_tags(method_name, "method", line, file_item["path"])
+            results.append(build_symbol_record(
+                symbol=symbol,
+                kind="method",
+                name=method_name,
+                qualified_name=make_qn(symbol),
+                file_item=file_item,
+                line=idx,
+                end_line=None,
+                signature=line,
+                container=container,
+                visibility=visibility,
+                tags=tags
+            ))
+
+        brace_depth += raw_line.count("{")
+        brace_depth -= raw_line.count("}")
+
+        while namespace_stack and brace_depth < namespace_stack[-1]["brace_depth"]:
+            namespace_stack.pop()
+        while class_stack and brace_depth < class_stack[-1]["brace_depth"]:
+            class_stack.pop()
+
+    return dedupe_symbols(results)
+
+
 def extract_aidl_symbols(file_item: Dict, repo_root: Path) -> List[Dict]:
     file_path = repo_root / file_item["path"]
     text = safe_read_text(file_path)
@@ -442,7 +702,9 @@ def should_process(file_item: Dict) -> bool:
         return False
     if file_item.get("file_type") not in {"source", "aidl"}:
         return False
-    if file_item.get("language") not in {"java", "kotlin", "aidl"}:
+    if file_item.get("language") not in {
+        "java", "kotlin", "aidl", "c", "cpp", "c_header", "cpp_header"
+    }:
         return False
     return True
 
@@ -466,6 +728,8 @@ def build_symbols(files_jsonl_path: str, repo_root: str, output_path: str) -> No
                 symbols = extract_java_kotlin_symbols(file_item, repo_root_path)
             elif lang == "aidl":
                 symbols = extract_aidl_symbols(file_item, repo_root_path)
+            elif lang in {"c", "cpp", "c_header", "cpp_header"}:
+                symbols = extract_cpp_c_symbols(file_item, repo_root_path)
             else:
                 symbols = []
 

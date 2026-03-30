@@ -42,7 +42,9 @@ ONBIND_PAT = re.compile(r'\bonBind\s*\(')
 
 CONTROL_WORDS = {
     "if", "for", "while", "switch", "catch", "return", "throw", "new", "when",
-    "synchronized", "try", "else", "do", "super", "this"
+    "synchronized", "try", "else", "do", "super", "this",
+    "sizeof", "alignof", "decltype", "static_assert", "namespace", "template",
+    "const_cast", "dynamic_cast", "reinterpret_cast", "static_cast", "typeid",
 }
 
 
@@ -123,7 +125,9 @@ def should_process_file(file_item: Dict) -> bool:
         return False
     if file_item.get("file_type") not in {"source", "aidl"}:
         return False
-    if file_item.get("language") not in {"java", "kotlin", "aidl"}:
+    if file_item.get("language") not in {
+        "java", "kotlin", "aidl", "c", "cpp", "c_header", "cpp_header"
+    }:
         return False
     return True
 
@@ -223,7 +227,25 @@ def extract_import_relations(file_item: Dict, repo_root: Path, file_symbols: Lis
     if not text:
         return []
 
-    top_symbols = [s for s in file_symbols if s.get("kind") in {"class", "interface", "enum", "object"} and not s.get("container")]
+    lang = file_item.get("language", "")
+    java_kotlin_top_kinds = {"class", "interface", "enum", "object"}
+    cc_top_kinds = java_kotlin_top_kinds | {"struct", "union", "namespace"}
+
+    if lang in {"java", "kotlin"}:
+        top_symbols = [
+            s for s in file_symbols
+            if s.get("kind") in java_kotlin_top_kinds and not s.get("container")
+        ]
+    elif lang in {"c", "cpp", "c_header", "cpp_header"}:
+        top_symbols = [
+            s for s in file_symbols
+            if s.get("kind") in cc_top_kinds and not s.get("container")
+        ]
+    else:
+        top_symbols = []
+
+    if not top_symbols:
+        top_symbols = [s for s in file_symbols if not s.get("container")]
     if not top_symbols:
         return []
 
@@ -231,10 +253,17 @@ def extract_import_relations(file_item: Dict, repo_root: Path, file_symbols: Lis
     results: List[Dict] = []
 
     for idx, raw in enumerate(text.splitlines(), start=1):
-        m = re.match(r'^\s*import\s+([^\s;]+)', raw)
-        if not m:
+        imported = None
+        if lang in {"java", "kotlin"}:
+            m = re.match(r"^\s*import\s+([^\s;]+)", raw)
+            if m:
+                imported = m.group(1).strip()
+        elif lang in {"c", "cpp", "c_header", "cpp_header"}:
+            m = re.match(r'^\s*#include\s+["<]([^">]+)[">]', raw)
+            if m:
+                imported = m.group(1).strip()
+        if imported is None:
             continue
-        imported = m.group(1).strip()
 
         results.append(
             make_relation(
@@ -259,7 +288,7 @@ def extract_inheritance_relations(file_item: Dict, repo_root: Path, file_symbols
 
     symbol_name_to_symbol = {}
     for s in file_symbols:
-        if s.get("kind") in {"class", "interface", "enum", "object"}:
+        if s.get("kind") in {"class", "interface", "enum", "object", "struct", "union"}:
             symbol_name_to_symbol[s["name"]] = s["symbol"]
 
     results: List[Dict] = []
@@ -334,6 +363,38 @@ def extract_inheritance_relations(file_item: Dict, repo_root: Path, file_symbols
                             confidence="high"
                         )
                     )
+
+        elif file_item["language"] in {"cpp", "cpp_header", "c_header", "c"}:
+            m = re.search(
+                r"\b(?:class|struct)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.+)",
+                line,
+            )
+            if not m:
+                continue
+            name = m.group(1)
+            bases_part = m.group(2).strip()
+            from_symbol = symbol_name_to_symbol.get(name, name)
+            for raw_base in bases_part.split(","):
+                b = raw_base.strip()
+                b = re.sub(
+                    r"^(virtual\s+)?(public|private|protected)\s+",
+                    "",
+                    b,
+                )
+                base_name = b.split()[0] if b else ""
+                if not base_name:
+                    continue
+                results.append(
+                    make_relation(
+                        from_symbol=from_symbol,
+                        to_symbol=short_type_name(base_name),
+                        rel_type="extends",
+                        file_path=file_item["path"],
+                        module=file_item.get("module", ""),
+                        line=idx,
+                        confidence="high",
+                    )
+                )
 
     return results
 
@@ -585,8 +646,10 @@ def build_relations(
             extract_import_relations(file_item, repo_root_path, file_symbols)
         )
 
-        # extends / implements
-        if file_item["language"] in {"java", "kotlin"}:
+        # extends / implements (incl. C++ class/struct : bases)
+        if file_item["language"] in {
+            "java", "kotlin", "cpp", "cpp_header", "c_header", "c"
+        }:
             all_relations.extend(
                 extract_inheritance_relations(file_item, repo_root_path, file_symbols)
             )
@@ -598,7 +661,9 @@ def build_relations(
             )
 
         # weak references
-        if file_item["language"] in {"java", "kotlin"}:
+        if file_item["language"] in {
+            "java", "kotlin", "cpp", "cpp_header", "c_header", "c"
+        }:
             all_relations.extend(
                 extract_reference_relations(
                     file_item=file_item,

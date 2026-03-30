@@ -1,4 +1,4 @@
-# Code KB + Log Index (English)
+# Code KB + Log Index
 
 This directory provides a lightweight **code knowledge base (KB)** builder and a **source-level log call index**. The intended workflow for a bug-analysis agent is:
 

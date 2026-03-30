@@ -10,9 +10,9 @@ graph TD
     B --> C{Button type}
 
     C -->|Digits / operators| D[CalculatorInputBuffer<br/>Append input]
-    C -->|Equals (=)| E[Trigger evaluation]
-    C -->|Clear (C)| F[Clear buffer]
-    C -->|Delete (DEL)| G[Delete last character]
+    C -->|Equals| E[Trigger evaluation]
+    C -->|Clear| F[Clear buffer]
+    C -->|Delete| G[Delete last character]
 
     D --> H[Update display]
     E --> I[Call CalculatorEngine.evaluate]
@@ -51,7 +51,7 @@ flowchart TD
         T2 --> T3{Character type}
         T3 -->|Digit / dot| T4[Read full number]
         T3 -->|Operator + - * /| T5[Read operator]
-        T3 -->|Paren ( )| T6[Read paren]
+        T3 -->|Parentheses| T6[Read paren]
         T3 -->|Whitespace| T7[Skip]
         T3 -->|Other| T8[Error: invalid character]
         T4 --> T9[Emit NUMBER token]

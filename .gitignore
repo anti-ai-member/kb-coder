@@ -3,3 +3,5 @@ __pycache__/
 *.py[cod]
 .code_kb/
 node_modules/
+logs/
+kb/

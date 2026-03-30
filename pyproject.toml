@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling>=1.26.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "code-kb"
+version = "0.1.0"
+description = "Scan a codebase into files/symbols/relations JSONL."
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.26.0",
+]
+[project.scripts]
+unified-mcp-server = "tools.unified_mcp_server:main_sync"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tools"]

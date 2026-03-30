@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">演示计算器</string>
+    <string name="display_hint">0</string>
+    <string name="error_invalid">表达式无效</string>
+    <string name="error_div_zero">不能除以 0</string>
+</resources>

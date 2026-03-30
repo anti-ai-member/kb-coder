@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/calc_display_bg"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <TextView
+        android:id="@+id/textDisplay"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="bottom|end"
+        android:maxLines="4"
+        android:padding="16dp"
+        android:text="@string/display_hint"
+        android:textColor="@color/white"
+        android:textSize="36sp" />
+
+    <GridLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:columnCount="4"
+        android:rowCount="5"
+        android:useDefaultMargins="true">
+
+        <Button
+            android:id="@+id/btnClear"
+            style="@style/Widget.CalcDemo.Key.Func"
+            android:layout_columnSpan="2"
+            android:layout_gravity="fill_horizontal"
+            android:text="C" />
+
+        <Button
+            android:id="@+id/btnDelete"
+            style="@style/Widget.CalcDemo.Key.Func"
+            android:layout_columnSpan="2"
+            android:layout_gravity="fill_horizontal"
+            android:text="DEL" />
+
+        <Button
+            android:id="@+id/btn7"
+            style="@style/Widget.CalcDemo.Key.Digit"
+            android:text="7" />
+
+        <Button
+            android:id="@+id/btn8"
+            style="@style/Widget.CalcDemo.Key.Digit"
+            android:text="8" />
+
+        <Button
+            android:id="@+id/btn9"
+            style="@style/Widget.CalcDemo.Key.Digit"
+            android:text="9" />
+
+        <Button
+            android:id="@+id/btnDiv"
+            style="@style/Widget.CalcDemo.Key.Op"
+            android:text="/" />
+
+        <Button
+            android:id="@+id/btn4"
+            style="@style/Widget.CalcDemo.Key.Digit"
+            android:text="4" />
+
+        <Button
+            android:id="@+id/btn5"
+            style="@style/Widget.CalcDemo.Key.Digit"
+            android:text="5" />
+
+        <Button
+            android:id="@+id/btn6"
+            style="@style/Widget.CalcDemo.Key.Digit"
+            android:text="6" />
+
+        <Button
+            android:id="@+id/btnMul"
+            style="@style/Widget.CalcDemo.Key.Op"
+            android:text="*" />
+
+        <Button
+            android:id="@+id/btn1"
+            style="@style/Widget.CalcDemo.Key.Digit"
+            android:text="1" />
+
+        <Button
+            android:id="@+id/btn2"
+            style="@style/Widget.CalcDemo.Key.Digit"
+            android:text="2" />
+
+        <Button
+            android:id="@+id/btn3"
+            style="@style/Widget.CalcDemo.Key.Digit"
+            android:text="3" />
+
+        <Button
+            android:id="@+id/btnSub"
+            style="@style/Widget.CalcDemo.Key.Op"
+            android:text="-" />
+
+        <Button
+            android:id="@+id/btn0"
+            style="@style/Widget.CalcDemo.Key.Digit"
+            android:layout_columnSpan="2"
+            android:layout_gravity="fill_horizontal"
+            android:text="0" />
+
+        <Button
+            android:id="@+id/btnDot"
+            style="@style/Widget.CalcDemo.Key.Digit"
+            android:text="." />
+
+        <Button
+            android:id="@+id/btnAdd"
+            style="@style/Widget.CalcDemo.Key.Op"
+            android:text="+" />
+
+        <Button
+            android:id="@+id/btnParenOpen"
+            style="@style/Widget.CalcDemo.Key.Func"
+            android:text="(" />
+
+        <Button
+            android:id="@+id/btnParenClose"
+            style="@style/Widget.CalcDemo.Key.Func"
+            android:text=")" />
+
+        <Button
+            android:id="@+id/btnEquals"
+            style="@style/Widget.CalcDemo.Key.Op"
+            android:layout_columnSpan="2"
+            android:layout_gravity="fill_horizontal"
+            android:text="=" />
+    </GridLayout>
+</LinearLayout>

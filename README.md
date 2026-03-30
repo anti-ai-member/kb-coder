@@ -6,6 +6,8 @@ This directory provides a lightweight **code knowledge base (KB)** builder and a
 2. Summarize what’s frequent / high-impact.
 3. Jump back into source using the code KB and the log-call index to find relevant code areas.
 
+An example analysis produced using **kb-coder + DeepSeek** is available in `code-analysis-result.md`.
+
 ## Build the indexes (recommended)
 
 Run the pipeline on a code directory:

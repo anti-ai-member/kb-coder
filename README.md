@@ -42,6 +42,73 @@ python tools/query_log_index.py --index <code_directory>/.code_kb/log_index.json
 python tools/query_log_index.py --index <code_directory>/.code_kb/log_index.jsonl top-files --limit 30
 ```
 
+## MCP server configuration (Cursor / MCP clients)
+
+This repo includes a unified **stdio MCP server** implemented in `tools/unified_mcp_server.py`.
+
+### Prerequisites
+
+- Python **3.10+**
+- Node.js **18+** (only needed if you use the `npx` wrapper)
+
+### 1) Prepare index files for a target codebase
+
+Generate indexes for the codebase you want to analyze:
+
+```bash
+python build_pipeline.py <code_directory>
+```
+
+This produces:
+
+- `<code_directory>/.code_kb/files.jsonl`
+- `<code_directory>/.code_kb/symbols.jsonl`
+- `<code_directory>/.code_kb/relations.jsonl`
+- `<code_directory>/.code_kb/log_index.jsonl`
+
+### 2) Configure the MCP server
+
+The server needs paths to those JSONL files. You can provide them via environment variables.
+
+#### Option A: Use the `npx` stdio wrapper (recommended)
+
+Point your MCP client to run `npx` against this repo directory. Example configuration:
+
+```json
+{
+  "command": "npx",
+  "args": ["-y", "<path-to-this-repo>"],
+  "env": {
+    "CODE_KB_ROOT": "<code_directory>",
+    "KB_FILES_JSONL": "<code_directory>/.code_kb/files.jsonl",
+    "KB_SYMBOLS_JSONL": "<code_directory>/.code_kb/symbols.jsonl",
+    "KB_RELATIONS_JSONL": "<code_directory>/.code_kb/relations.jsonl",
+    "LOG_INDEX_JSONL": "<code_directory>/.code_kb/log_index.jsonl"
+  }
+}
+```
+
+#### Option B: Run Python directly (no Node required)
+
+```json
+{
+  "command": "python",
+  "args": ["-m", "tools.unified_mcp_server"],
+  "env": {
+    "CODE_KB_ROOT": "<code_directory>",
+    "KB_FILES_JSONL": "<code_directory>/.code_kb/files.jsonl",
+    "KB_SYMBOLS_JSONL": "<code_directory>/.code_kb/symbols.jsonl",
+    "KB_RELATIONS_JSONL": "<code_directory>/.code_kb/relations.jsonl",
+    "LOG_INDEX_JSONL": "<code_directory>/.code_kb/log_index.jsonl"
+  }
+}
+```
+
+Notes:
+
+- `CODE_KB_ROOT` is used as a default base path, but the JSONL env vars are what the server actually opens.
+- The MCP server will fail fast if any required JSONL file is missing.
+
 ## Notes / limitations
 
 - The C/C++ and Java/Kotlin parsers are **regex/heuristic-based**, not full compilers/ASTs. Expect occasional false positives/negatives (templates, macros, complex declarations, multi-line constructs, etc.).
